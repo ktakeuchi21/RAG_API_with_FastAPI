@@ -6,9 +6,13 @@
 
 This project implements a **Retrieval Augmented Generation (RAG) API** using **FastAPI**, **ChromaDB**, and **Ollama (tinyllama)**. The API allows documents to be ingested into a local vector database and queried in real time, grounding LLM responses in retrieved context rather than relying on model knowledge alone.
 
-The primary goal of this project was tp **build the entire pipeline from scratch** so I can work with embeddings, retrieval, prompt construction, and API design. I rationally understand how RAG works, but haven't built a lite version myself yet.
+The primary goal of this project was tp **build the entire pipeline from scratch** so I can work with embeddings, retrieval, prompt construction, and API design. While I had previously worked with RAG-enabled tools, this project focuses on building a minimal but complete RAG pipeline from first principles.
 
-The knowledge base for this project focuses on Medicare decision-making, including enrollment timing, Original Medicare vs Medicare Advantage tradeoffs, Part D prescriptions, and common pitfalls.
+The knowledge base for this project focuses on **Medicare decision-making**, including enrollment timing, Original Medicare vs Medicare Advantage tradeoffs, Part D prescriptions, and common pitfalls.
+
+### Why Medicare?
+
+Medicare is a strong RAG test case because it involves nuanced tradeoffs, enrollment timing, and plan design details that are easy for language models to oversimplify or hallucinate. Small factual errors can materially change decision outcomes, making grounding especially important.
 
 ---
 
@@ -138,14 +142,99 @@ This separation between **retrieval** and **generation** is the core design prin
 
 ---
 
-## Knowledge Base Design
+## Building the Medicare Knowledge Base (kb.txt)
 
-The knowledge base consists of plain-text documents stored locally and embedded into a vector database. Rather than treating the KB as a static reference, it is designed to contain **actual reasoning content**—explanations, tradeoffs, and scenarios—so that retrieved context meaningfully shapes the model’s output.
+To make the RAG demo meaningful, I needed a knowledge base that contains actual decision logic (tradeoffs, scenarios, enrollment timing) instead of only definitions. I created a Medicare-focused KB using ChatGPT Deep Research to generate structured content, then stored it locally as `kb.txt` for embedding into ChromaDB.
 
-Key considerations:
-- content is chunked to improve retrieval precision
-- embeddings represent semantic meaning, not keywords
-- retrieval quality directly impacts answer accuracy
+### Step 1: Generate domain content (ChatGPT Deep Research)
+
+I used ChatGPT Deep Research to generate a Medicare knowledge base that includes:
+- core concepts (Parts A/B/C/D)
+- enrollment timing (IEP/SEP/GEP) and common pitfalls
+- decision framework (Original Medicare vs Medicare Advantage)
+- Medigap + Part D reasoning
+- scenario-based test cases (turning 65 soon, still working, travel, prescription-heavy users)
+
+Example prompt used for Deep Research:
+
+```text
+Create a Medicare knowledge base for a RAG system. Include decision-oriented content, not just definitions:
+- Parts A/B/C/D
+- Initial Enrollment Period vs Special Enrollment Period vs penalties (high level)
+- Original Medicare vs Medicare Advantage tradeoffs (networks, flexibility, predictable costs)
+- Medigap and Part D (how to choose, what to compare)
+- Common mistakes and how to avoid them
+- 10–20 realistic scenarios phrased as user questions
+Write it as retrieval-friendly chunks with short titles and clear headings.
+Avoid year-specific premium numbers.
+```
+
+### Step 2: Create kb.txt
+
+I saved the generated content into kb.txt. In this project version, I embedded the entire file as a single document in ChromaDB for simplicity.
+
+### Step 3: Embed the knowledge base into ChromaDB
+
+I use embed.py to read kb.txt and store it into a persistent ChromaDB collection.
+```text
+import chromadb
+
+client = chromadb.PersistentClient(path="./db")
+collection = client.get_or_create_collection("docs")
+
+with open("kb.txt", "r") as f:
+    text = f.read()
+
+collection.add(documents=[text], ids=["kb"])
+
+print("Embedding stored in Chroma")
+```
+
+Run it:
+
+```text
+python embed.py
+```
+
+### Step 3: Embed the knowledge base into ChromaDB
+
+Start the API server
+
+```text
+uvicorn app:app --reload
+http://127.0.0.1:8000/docs
+```
+
+#### Example query (curl)
+
+This query is designed to trigger Medicare enrollment + plan tradeoff retrieval:
+
+```text
+curl -X POST "http://127.0.0.1:8000/query" \
+  -G \
+  --data-urlencode "q=I’m turning 65 in 3 months, planning to retire, and I take ongoing prescription medications. How should I think about Medicare Advantage versus Original Medicare, and what should I check first?"
+```
+
+Expected behavior:
+- Chroma retrieves the most relevant Medicare content from kb.txt
+The model answer references decision points (Original vs Advantage), enrollment timing, and Part D considerations
+
+#### Add new knowledge dynamically
+
+The /add endpoint makes the KB expandable without re-running embed.py.
+
+```text
+curl -X POST "http://127.0.0.1:8000/add" \
+  -G \
+  --data-urlencode "text=Medicare Advantage plans typically use provider networks and may require referrals, while Original Medicare allows nationwide access to providers who accept Medicare."
+```
+
+#### How the Retrieval Works (in app.py)
+
+Current retrieval behavior is intentionally minimal:
+- n_results=1
+- the retrieved document is used as the entire context
+- the model answers using the retrieved context + question
 
 ---
 
@@ -162,6 +251,7 @@ The `/query` endpoint accepts a natural language question and performs the follo
 - returns the generated answer
 
 This endpoint makes it easy to compare **model-only responses** vs **RAG-grounded responses**.
+
 
 ---
 
@@ -237,6 +327,6 @@ Potential next steps include:
 
 ## Conclusion
 
-This project helped my understanding of RAG systems! Building a lite, but full pipeline: embeddings, retrieval, prompting, and API designs.
+This project deepened my practical understanding of how retrieval quality, chunking, and prompt construction interact in real RAG systems.
 
 Even with a small local model, retrieval dramatically improved answer quality, reinforcing that **context often matters more than model size**.
