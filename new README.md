@@ -103,16 +103,20 @@ This project shows:
 **FastAPI**: API framework with automatic OpenAPI/Swagger UI
 - lightweight and fast to spin up
 - Python-native and well-suited for ML workflows
+
 **ChromaDB**: persistent vector database for embeddings
 - is easy to run locally without external services
 - supports persistent storage for embeddings
 - integrates cleanly with Python
+
 **Ollama**: local LLM runtime
 - run models locally without relying on external APIs
 - free to use
+
 **tinyllama**: lightweight open-source language model
 - its small model makes hallucinations more visible when context is missing
 - demonstrates how much RAG can compensate for model size
+
 **curl / Swagger UI**: API testing and inspection
 - test endpoints interactively
 - validate request/response shapes
